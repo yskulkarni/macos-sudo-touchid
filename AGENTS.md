@@ -17,8 +17,9 @@ Do not weaken these without an explicit user request and a fresh security review
 - Never edit, replace, or generate `/etc/pam.d/sudo`.
 - Write only `/etc/pam.d/sudo_local`.
 - Never configure PAM to load `pam_reattach.so` from `/opt/homebrew`, Homebrew `Cellar`, or any user-writable package-manager path.
-- The active PAM module path must be `/usr/local/lib/pam/pam_reattach.so`.
-- `/usr/local`, `/usr/local/lib`, `/usr/local/lib/pam`, `/usr/local/lib/pam/pam_reattach.so`, and `/etc/pam.d/sudo_local` must be `root:wheel` and not group/other writable.
+- The active PAM module path must be `/usr/local/libexec/pam/pam_reattach.so`. It is under `libexec`, not `lib`, because Homebrew on Intel Macs owns `/usr/local/lib`.
+- Create `/usr/local/libexec` only if it is missing; never re-own or re-mode an existing one.
+- `/usr/local`, `/usr/local/libexec`, `/usr/local/libexec/pam`, `/usr/local/libexec/pam/pam_reattach.so`, and `/etc/pam.d/sudo_local` must be `root:wheel` and not group/other writable.
 - Keep `pam_reattach` as `optional`.
 - Keep `pam_tid` as `sufficient`.
 - Keep `ignore_ssh` enabled by default.
@@ -26,7 +27,7 @@ Do not weaken these without an explicit user request and a fresh security review
 - Source builds must verify the pinned upstream tarball checksum before compiling.
 - Source builds must stage install output and copy only `pam_reattach.so` into the root-owned PAM module path.
 - Check parent directory ownership before the first privileged write, not only afterward.
-- Never remove or rename `/usr/local/lib/pam/pam_reattach.so` while `sudo_local` references it. OpenPAM rejects the whole sudo policy when a listed module cannot load, even an `optional` one.
+- Never remove or rename `/usr/local/libexec/pam/pam_reattach.so` while `sudo_local` references it. OpenPAM rejects the whole sudo policy when a listed module cannot load, even an `optional` one.
 
 ## Scripts
 

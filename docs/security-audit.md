@@ -25,8 +25,9 @@ The repository is designed around these invariants:
 - Do not edit or replace `/etc/pam.d/sudo`.
 - Configure sudo only through `/etc/pam.d/sudo_local`.
 - Do not load `pam_reattach.so` directly from Homebrew, the Cellar, or any user-writable package-manager path.
-- Copy the active `pam_reattach.so` module to `/usr/local/lib/pam/pam_reattach.so`.
-- Ensure the active PAM module path and parent directories are `root:wheel` and not group/other writable.
+- Copy the active `pam_reattach.so` module to `/usr/local/libexec/pam/pam_reattach.so`.
+- Ensure the active PAM module path and parent directories (`/usr/local`, `/usr/local/libexec`, `/usr/local/libexec/pam`) are `root:wheel` and not group/other writable.
+- Create `/usr/local/libexec` only if missing; never re-own or re-mode an existing one.
 - Keep `pam_reattach` as `optional`.
 - Keep `pam_tid` as `sufficient`.
 - Use `ignore_ssh` by default.
@@ -35,7 +36,7 @@ The repository is designed around these invariants:
 ## Current Expected PAM Configuration
 
 ```pam
-auth       optional       /usr/local/lib/pam/pam_reattach.so ignore_ssh
+auth       optional       /usr/local/libexec/pam/pam_reattach.so ignore_ssh
 auth       sufficient     pam_tid.so
 ```
 
@@ -48,6 +49,8 @@ auth       sufficient     pam_tid.so
 - Direct Homebrew/Cellar module loading is rejected by design.
 - Symlinked active PAM config or module paths are rejected by audit/install checks.
 - Group/other-writable active PAM paths are rejected by audit/install checks. Install and source-build scripts check parent directories before their first privileged write.
+- The module path is under `/usr/local/libexec`, not `/usr/local/lib`. On Intel Macs Homebrew owns `/usr/local/lib`, and a user-owned parent directory lets code running as the user rename a root-owned `pam/` subdirectory aside and plant a replacement module. Homebrew does not claim or link into `/usr/local/libexec`.
+- Migration from the earlier `/usr/local/lib/pam/pam_reattach.so` path copies that file only when `/usr/local/lib`, `/usr/local/lib/pam`, and the file are all root-safe. The new module is installed before `sudo_local` is rewritten, and the old file is never deleted by the scripts.
 - An existing module at the target path is reused only if it is already `root:wheel` and not group/other writable; it is never re-owned.
 - The audit requires the active `sudo_local` rules to be exactly the two expected lines in order, so extra rules (for example `pam_permit.so`) and commented-out lines fail it.
 - The installer re-authenticates through the new stack with `sudo -k true`, which leaves cached credentials intact, and rolls back `sudo_local` if that fails.
@@ -86,6 +89,7 @@ The source-build path should also be tested before tagging a release:
 - The module is copied from a user-writable location (Homebrew prefix or a user-owned build directory). Code running as the user at install time could tamper with it before the copy.
 - Upstream `pam_reattach` v1.3 reads past the end of its `ssh_env_vars` array in the `ignore_ssh` check. The source build patches this; the Homebrew bottle does not.
 - `ignore_ssh` relies on SSH environment variables. Existing panes in a locally started tmux or screen session that is later attached over SSH do not have them, so sudo there can show a Touch ID prompt on the local display.
+- Another installer could later take ownership of `/usr/local/libexec`. The audit checks its ownership and fails if that happens.
 - Touch ID for sudo does not defend against code already running as the user, which can wait for a cached sudo timestamp either way.
 
 ## Release Recommendation

@@ -4,8 +4,11 @@ set -eu
 PAM_DIR="/etc/pam.d"
 SUDO_PAM="${PAM_DIR}/sudo"
 SUDO_LOCAL="${PAM_DIR}/sudo_local"
-TARGET_DIR="/usr/local/lib/pam"
+TARGET_PARENT="/usr/local/libexec"
+TARGET_DIR="${TARGET_PARENT}/pam"
 TARGET_MODULE="${TARGET_DIR}/pam_reattach.so"
+# Earlier releases installed here. Used only as a copy source when migrating.
+LEGACY_MODULE="/usr/local/lib/pam/pam_reattach.so"
 MANAGED_MARKER="# managed by macos-sudo-touchid"
 EXPECTED_REATTACH="auth       optional       ${TARGET_MODULE} ignore_ssh"
 EXPECTED_TID="auth       sufficient     pam_tid.so"
@@ -43,6 +46,11 @@ assert_root_safe_path() {
   [ $((other_digit & 2)) -eq 0 ] || die "$path must not be other-writable"
 }
 
+# Non-fatal form of assert_root_safe_path; the subshell contains die's exit.
+is_root_safe_path() {
+  (assert_root_safe_path "$1") >/dev/null 2>&1
+}
+
 # Print non-comment, non-blank lines of a PAM file.
 active_lines() {
   sed '/^[[:space:]]*#/d; /^[[:space:]]*$/d' "$1"
@@ -57,6 +65,14 @@ find_source_module() {
     # Reuse only a module that is already root-owned; never adopt a file someone else placed.
     assert_root_safe_path "$TARGET_MODULE"
     printf '%s\n' "$TARGET_MODULE"
+    return
+  fi
+
+  # Migrate an earlier install only if every component of its path is root-owned.
+  # On Intel Macs Homebrew owns /usr/local/lib, so this is skipped there.
+  if is_root_safe_path /usr/local/lib && is_root_safe_path /usr/local/lib/pam \
+    && is_root_safe_path "$LEGACY_MODULE" && [ -f "$LEGACY_MODULE" ]; then
+    printf '%s\n' "$LEGACY_MODULE"
     return
   fi
 
@@ -97,11 +113,13 @@ need_cmd mktemp
 grep -Eq '^[[:space:]]*auth[[:space:]]+include[[:space:]]+sudo_local([[:space:]]|$)' "$SUDO_PAM" \
   || die "$SUDO_PAM does not include sudo_local; refusing to edit Apple-managed sudo PAM config"
 
-# Check parent directories before any privileged write. On Intel Macs, Homebrew
-# usually owns /usr/local/lib, which makes the root-owned module path unsafe.
+# Check parent directories before any privileged write. The module lives under
+# libexec rather than lib because Homebrew on Intel Macs owns /usr/local/lib.
 assert_root_safe_path "$PAM_DIR"
 assert_root_safe_path /usr/local
-assert_root_safe_path /usr/local/lib
+if [ -e "$TARGET_PARENT" ] || [ -L "$TARGET_PARENT" ]; then
+  assert_root_safe_path "$TARGET_PARENT"
+fi
 if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
   assert_root_safe_path "$TARGET_DIR"
 fi
@@ -113,6 +131,9 @@ case "$source_module" in
   "$TARGET_MODULE")
     echo "using existing root-owned PAM module"
     ;;
+  "$LEGACY_MODULE")
+    echo "copying pam_reattach from the previous install path $LEGACY_MODULE"
+    ;;
   */Cellar/*|/opt/homebrew/*|/usr/local/*)
     echo "copying pam_reattach from Homebrew into root-owned PAM path"
     ;;
@@ -121,6 +142,9 @@ case "$source_module" in
     ;;
 esac
 
+# Create libexec only if missing; an existing one may hold other vendors' files.
+[ -e "$TARGET_PARENT" ] || sudo /usr/bin/install -d -o root -g wheel -m 0755 "$TARGET_PARENT"
+assert_root_safe_path "$TARGET_PARENT"
 sudo /usr/bin/install -d -o root -g wheel -m 0755 "$TARGET_DIR"
 assert_root_safe_path "$TARGET_DIR"
 if [ "$source_module" = "$TARGET_MODULE" ]; then

@@ -3,7 +3,8 @@ set -u
 
 SUDO_PAM="/etc/pam.d/sudo"
 SUDO_LOCAL="/etc/pam.d/sudo_local"
-TARGET_MODULE="/usr/local/lib/pam/pam_reattach.so"
+TARGET_MODULE="/usr/local/libexec/pam/pam_reattach.so"
+LEGACY_MODULE="/usr/local/lib/pam/pam_reattach.so"
 EXPECTED_REATTACH="auth       optional       ${TARGET_MODULE} ignore_ssh"
 EXPECTED_TID="auth       sufficient     pam_tid.so"
 failures=0
@@ -62,8 +63,8 @@ fi
 check_root_safe /etc/pam.d
 check_root_safe "$SUDO_PAM"
 check_root_safe /usr/local
-check_root_safe /usr/local/lib
-check_root_safe /usr/local/lib/pam
+check_root_safe /usr/local/libexec
+check_root_safe /usr/local/libexec/pam
 check_root_safe "$TARGET_MODULE"
 check_root_safe "$SUDO_LOCAL"
 
@@ -80,6 +81,10 @@ if grep -Eq '/opt/homebrew|/Cellar/' "$SUDO_LOCAL" 2>/dev/null; then
   fail "$SUDO_LOCAL references Homebrew-owned paths"
 else
   pass "$SUDO_LOCAL does not reference Homebrew-owned paths"
+fi
+
+if [ -e "$LEGACY_MODULE" ] && ! grep -Fq "$LEGACY_MODULE" "$SUDO_LOCAL" 2>/dev/null; then
+  echo "NOTE: $LEGACY_MODULE from an earlier install is no longer referenced by $SUDO_LOCAL and can be removed"
 fi
 
 if command -v otool >/dev/null 2>&1 && [ -e "$TARGET_MODULE" ]; then

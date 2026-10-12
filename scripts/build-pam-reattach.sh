@@ -4,7 +4,8 @@ set -eu
 VERSION="1.3"
 TARBALL_URL="https://github.com/fabianishere/pam_reattach/archive/refs/tags/v${VERSION}.tar.gz"
 TARBALL_SHA256="b1b735fa7832350a23457f7d36feb6ec939e5e1de987b456b6c28f5738216570"
-TARGET_DIR="/usr/local/lib/pam"
+TARGET_PARENT="/usr/local/libexec"
+TARGET_DIR="${TARGET_PARENT}/pam"
 TARGET_MODULE="${TARGET_DIR}/pam_reattach.so"
 
 workdir=""
@@ -44,8 +45,12 @@ need_cmd tar
 need_cmd sudo
 
 # Fail before downloading if the root-owned install path cannot be made safe.
+# The module lives under libexec rather than lib because Homebrew on Intel
+# Macs owns /usr/local/lib but never touches /usr/local/libexec.
 assert_root_safe_path /usr/local
-assert_root_safe_path /usr/local/lib
+if [ -e "$TARGET_PARENT" ] || [ -L "$TARGET_PARENT" ]; then
+  assert_root_safe_path "$TARGET_PARENT"
+fi
 if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
   assert_root_safe_path "$TARGET_DIR"
 fi
@@ -88,6 +93,9 @@ module="$(find "$stage" -type f -name pam_reattach.so -print | head -1)"
 [ -n "$module" ] || die "build completed but pam_reattach.so was not found"
 
 echo "installing pam_reattach.so to root-owned PAM path"
+# Create libexec only if missing; an existing one may hold other vendors' files.
+[ -e "$TARGET_PARENT" ] || sudo /usr/bin/install -d -o root -g wheel -m 0755 "$TARGET_PARENT"
+assert_root_safe_path "$TARGET_PARENT"
 sudo /usr/bin/install -d -o root -g wheel -m 0755 "$TARGET_DIR"
 assert_root_safe_path "$TARGET_DIR"
 sudo /usr/bin/install -o root -g wheel -m 0444 "$module" "$TARGET_MODULE"

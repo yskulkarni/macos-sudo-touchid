@@ -34,7 +34,7 @@ Avoid this on shared-admin, kiosk, lab, remote-admin, or high-assurance systems 
 - macOS with Touch ID configured.
 - A user account that is already allowed to use `sudo`.
 - Apple's `/etc/pam.d/sudo` must include `sudo_local`.
-- `/usr/local` and `/usr/local/lib` must be `root:wheel` and not group/other writable. This is the default on Apple Silicon. On Intel Macs, Homebrew usually owns `/usr/local/lib`, and the scripts refuse to run.
+- `/usr/local` must be `root:wheel` and not group/other writable, which is the default on both Apple Silicon and Intel Macs. If `/usr/local/libexec` exists it must be too. The module goes under `libexec` rather than `lib` because Homebrew on Intel Macs owns `/usr/local/lib` but not `/usr/local/libexec`.
 - Either Homebrew `pam-reattach`, or CMake plus Apple's command line tools to build `pam_reattach` from source.
 
 ## Install
@@ -66,9 +66,9 @@ Keep the current Terminal window open while testing. The installer backs up any 
 The installer:
 
 1. Verifies that `/etc/pam.d/sudo` includes `sudo_local`.
-2. Verifies that `/etc/pam.d`, `/usr/local`, `/usr/local/lib`, and any existing `/usr/local/lib/pam` are `root:wheel`, not symlinks, and not group/other writable, before any privileged write.
+2. Verifies that `/etc/pam.d`, `/usr/local`, and any existing `/usr/local/libexec` and `/usr/local/libexec/pam` are `root:wheel`, not symlinks, and not group/other writable, before any privileged write.
 3. Refuses to overwrite unmanaged active PAM rules in `/etc/pam.d/sudo_local`.
-4. Copies `pam_reattach.so` to `/usr/local/lib/pam/pam_reattach.so` if it is not already there. An existing file at that path is reused only if it is already root-owned and safe.
+4. Creates `/usr/local/libexec` (root:wheel, 0755) only if it does not exist, then copies `pam_reattach.so` to `/usr/local/libexec/pam/pam_reattach.so` if it is not already there. An existing file at that path is reused only if it is already root-owned and safe.
 5. Writes a managed `/etc/pam.d/sudo_local`, backing up any existing file next to it.
 6. Re-authenticates once through the new PAM stack with `sudo -k true`. If that fails, it restores the previous `sudo_local` using the still-cached sudo credentials.
 
@@ -76,14 +76,27 @@ It does not edit `/etc/pam.d/sudo`.
 
 ## Updating pam_reattach
 
-The installer reuses the module already at `/usr/local/lib/pam/pam_reattach.so`, so upgrading Homebrew's `pam-reattach` does not change what PAM loads. To pick up a new build, run `./scripts/build-pam-reattach.sh` again, or replace the module from Homebrew:
+The installer reuses the module already at `/usr/local/libexec/pam/pam_reattach.so`, so upgrading Homebrew's `pam-reattach` does not change what PAM loads. To pick up a new build, run `./scripts/build-pam-reattach.sh` again, or replace the module from Homebrew:
 
 ```sh
-sudo /usr/bin/install -o root -g wheel -m 0444 "$(brew --prefix pam-reattach)/lib/pam/pam_reattach.so" /usr/local/lib/pam/pam_reattach.so
+sudo /usr/bin/install -o root -g wheel -m 0444 "$(brew --prefix pam-reattach)/lib/pam/pam_reattach.so" /usr/local/libexec/pam/pam_reattach.so
 ./scripts/audit.sh
 ```
 
 Uninstalling Homebrew's `pam-reattach` does not affect sudo, because PAM loads the root-owned copy.
+
+## Migrating From `/usr/local/lib/pam`
+
+Earlier versions installed the module to `/usr/local/lib/pam/pam_reattach.so`. Run `./scripts/install.sh` again. If `/usr/local/lib`, `/usr/local/lib/pam`, and the old module are all root-owned and safe, the installer copies the old module to the new path. Otherwise it uses Homebrew or asks you to run `./scripts/build-pam-reattach.sh`. The new module is in place before `sudo_local` is rewritten to reference it.
+
+The installer does not delete the old module. Once `./scripts/audit.sh` passes and reports that the old file is no longer referenced, you can remove it:
+
+```sh
+sudo /bin/rm /usr/local/lib/pam/pam_reattach.so
+sudo /bin/rmdir /usr/local/lib/pam
+```
+
+Do not remove it before `sudo_local` has been rewritten; see [Recovery](#recovery).
 
 ## Upstream Patch
 
@@ -108,7 +121,7 @@ The audit checks that:
 ./scripts/uninstall.sh
 ```
 
-This disables only this project's `sudo_local` configuration if it matches the managed block. It does not remove Homebrew packages or delete `/usr/local/lib/pam/pam_reattach.so`.
+This disables only this project's `sudo_local` configuration if it matches the managed block. It does not remove Homebrew packages or delete `/usr/local/libexec/pam/pam_reattach.so`.
 
 After uninstalling, reinstalling from a non-interactive tool shell may fail because `sudo` will require a password and may not have a terminal. Reinstall from an interactive Terminal session:
 
@@ -123,11 +136,11 @@ cd /path/to/macos-sudo-touchid
 ./scripts/check.sh
 ```
 
-This runs shell syntax checks and the live audit. The audit reads the real `/etc/pam.d` and `/usr/local/lib/pam`, so it fails on a machine where this configuration is not installed. It does not run uninstall/reinstall, because uninstall intentionally disables Touch ID and changes how future `sudo` prompts behave.
+This runs shell syntax checks and the live audit. The audit reads the real `/etc/pam.d` and `/usr/local/libexec/pam`, so it fails on a machine where this configuration is not installed. It does not run uninstall/reinstall, because uninstall intentionally disables Touch ID and changes how future `sudo` prompts behave.
 
 ## Recovery
 
-Do not delete `/usr/local/lib/pam/pam_reattach.so` while `sudo_local` references it. OpenPAM rejects the whole sudo policy if it cannot load a listed module, even an `optional` one. Every `sudo` call then fails, including password authentication.
+Do not delete `/usr/local/libexec/pam/pam_reattach.so` while `sudo_local` references it. OpenPAM rejects the whole sudo policy if it cannot load a listed module, even an `optional` one. Every `sudo` call then fails, including password authentication.
 
 If that happens, restore Apple's comment-only template through the macOS administrator dialog. It uses Authorization Services, not the sudo PAM stack:
 
@@ -144,7 +157,7 @@ See [docs/security-audit.md](docs/security-audit.md) for the public audit summar
 ## Expected PAM Lines
 
 ```pam
-auth       optional       /usr/local/lib/pam/pam_reattach.so ignore_ssh
+auth       optional       /usr/local/libexec/pam/pam_reattach.so ignore_ssh
 auth       sufficient     pam_tid.so
 ```
 

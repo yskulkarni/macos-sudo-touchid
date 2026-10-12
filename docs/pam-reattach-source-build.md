@@ -5,7 +5,7 @@ Use this path when you do not want to depend on Homebrew's installed copy, or wh
 The build script downloads the upstream `pam_reattach` release tarball, verifies its SHA-256, applies one local patch (below), builds only the PAM module with CMake, installs into a temporary staging directory, then copies only `pam_reattach.so` to:
 
 ```text
-/usr/local/lib/pam/pam_reattach.so
+/usr/local/libexec/pam/pam_reattach.so
 ```
 
 It deliberately does not point PAM at the Homebrew prefix or the build directory.

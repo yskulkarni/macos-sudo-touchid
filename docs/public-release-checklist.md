@@ -8,7 +8,10 @@
 - [ ] Installer writes only `/etc/pam.d/sudo_local`.
 - [ ] Installer backs up existing `sudo_local`.
 - [ ] Installer refuses symlinked `sudo_local`.
-- [ ] Installer copies `pam_reattach.so` to `/usr/local/lib/pam/pam_reattach.so`.
+- [ ] Installer copies `pam_reattach.so` to `/usr/local/libexec/pam/pam_reattach.so`.
+- [ ] Installer creates `/usr/local/libexec` only when missing and never changes an existing one.
+- [ ] Migration from `/usr/local/lib/pam/pam_reattach.so` tested: module copied before `sudo_local` rewrite, old file left in place.
+- [ ] Manual test: build and install on an Intel Mac with Homebrew at `/usr/local`.
 - [ ] Source-build path downloads a pinned release and verifies SHA-256.
 - [ ] Source-build path stages install output and copies only `pam_reattach.so`.
 - [ ] Installer validates `root:wheel` ownership and non-writable parent directories.

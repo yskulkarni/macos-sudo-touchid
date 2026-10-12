@@ -13,13 +13,13 @@ The installer and documentation must preserve these properties:
 - Never edit or replace `/etc/pam.d/sudo`.
 - Write only `/etc/pam.d/sudo_local`.
 - Do not use `/opt/homebrew/lib/pam/pam_reattach.so` or any Homebrew Cellar path in PAM configuration.
-- Copy `pam_reattach.so` to `/usr/local/lib/pam/pam_reattach.so`.
+- Copy `pam_reattach.so` to `/usr/local/libexec/pam/pam_reattach.so`.
 - When building from source, verify the release tarball checksum before compiling.
 - Stage source builds into a temporary directory and copy only `pam_reattach.so` into the root-owned PAM module path.
-- Ensure `/usr/local`, `/usr/local/lib`, `/usr/local/lib/pam`, and the copied module are root-owned and not group/other writable.
+- Ensure `/usr/local`, `/usr/local/libexec`, `/usr/local/libexec/pam`, and the copied module are root-owned and not group/other writable.
 - Ensure `/etc/pam.d/sudo_local` is root-owned and not group/other writable.
 - Check parent directory ownership before any privileged write, not only after.
-- Never remove `/usr/local/lib/pam/pam_reattach.so` while `sudo_local` references it. OpenPAM rejects the whole sudo policy if a listed module cannot be loaded, whatever its control flag.
+- Never remove `/usr/local/libexec/pam/pam_reattach.so` while `sudo_local` references it. OpenPAM rejects the whole sudo policy if a listed module cannot be loaded, whatever its control flag.
 - Use `ignore_ssh` unless remote biometric prompts are an explicit, documented non-default mode.
 - Keep `pam_reattach` as `optional`.
 - Keep `pam_tid` as `sufficient`.
